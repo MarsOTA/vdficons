@@ -52,7 +52,7 @@ export interface Operator {
   rank: string;
   group: string; // A, B, C, D
   subgroup: string; // A1, A2...
-  qualification: 'DIR' | 'CP' | 'VIG' | 'AUT' | 'ALTRO';
+  qualification: 'DIR' | 'CP' | 'VIG' |'ALTRO';
   available: boolean;
   statusMessage?: string;
   assignedHours: number;
