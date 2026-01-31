@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { MOCK_OPERATORS, ALL_SPECIALIZATIONS, ALL_SEDI, ALL_PATENTI } from '../constants';
-import { OperationalEvent, EventStatus, UserRole, PersonnelRequirement } from '../types';
+import { OperationalEvent, EventStatus, UserRole } from '../types';
 import { getMainDayCode, getPriorityChain, selectableForVigilanza } from '../utils/turnarioLogic';
 import ExcelJS from 'exceljs/dist/exceljs.min.js';
 import html2canvas from 'html2canvas';
@@ -242,36 +242,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     setExpandedIds(prev => prev.filter(id => !deleteRequest.includes(id)));
     if (assignmentModal && deleteRequest.includes(assignmentModal.eventId)) setAssignmentModal(null);
     setDeleteRequest(null);
-  };
-
-  // --- Entrust helpers ---
-  const getCompilatoreGroup = (r: UserRole) => (r.startsWith('COMPILATORE') ? r.split('_')[1] : null);
-
-  const ensureArrayLen = <T,>(arr: (T | null | undefined)[] | undefined, len: number, fill: T | null): (T | null)[] => {
-    const base = Array.isArray(arr) ? [...arr] : [];
-    while (base.length < len) base.push(fill);
-    return base.slice(0, len) as (T | null)[];
-  };
-
-  // --- Entrust helpers ---
-  const getUserGroupFromRole = (r: UserRole) => (r.startsWith('COMPILATORE') ? r.split('_')[1] : null);
-
-  const ensureEntrustArrays = (req: PersonnelRequirement) => {
-    if (!req.entrustedGroups) req.entrustedGroups = Array(req.qty).fill(null);
-    if (!req.entrustedByGroups) req.entrustedByGroups = Array(req.qty).fill(null);
-    if (!req.entrustPassCount) req.entrustPassCount = Array(req.qty).fill(0);
-  };
-
-  const getSlotOwner = (ev: OperationalEvent, req: PersonnelRequirement, slotIndex: number) => {
-    const dayCode = getMainDayCode(new Date(ev.date + 'T00:00:00'));
-    const chain = getPriorityChain(dayCode);
-    const priorityOwner = chain?.[0] || 'A';
-    const passCount = req.entrustPassCount?.[slotIndex] ?? 0;
-    const maxPasses = (chain && chain.length) ? chain.length : 4;
-    const isVacant = passCount >= maxPasses && !req.assignedIds?.[slotIndex];
-    if (isVacant) return { owner: priorityOwner, isVacant };
-    const entrustedTo = req.entrustedGroups?.[slotIndex];
-    return { owner: entrustedTo || priorityOwner, isVacant };
   };
 
   const handleDownloadPDF = async () => {
@@ -727,22 +697,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       targetReq.assignedIds = newAssigned;
 
       // Se assegno un operatore, annullo eventuale affidamento sullo slot
-      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
-      const newEntries = [...targetReq.entrustedGroups];
-      if (operatorId) newEntries[slotIndex] = null;
-      targetReq.entrustedGroups = newEntries;
+      // IMPORTANTISSIMO:
+      // NON cancellare entrustedGroups/entrustedByGroups quando assegni un operatore.
+      // Servono a mantenere la "proprietà" dello slot (chi può mettere/togliere l'operatore)
+      // anche dopo l'assegnazione.
+      // Unica eccezione: se lo slot era in stato VACANTE e il gruppo prioritario assegna,
+      // allora resettiamo il VACANTE.
+      if (operatorId && targetReq.entrustedGroups?.[slotIndex] === 'VACANTE') {
+        const g = [...(targetReq.entrustedGroups ?? Array(targetReq.qty).fill(null))];
+        g[slotIndex] = null;
+        targetReq.entrustedGroups = g;
 
-      // Se assegno un operatore, annullo anche "chi ha affidato" (perché non è più affidato)
-      if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
-      const newEntrustedBy = [...targetReq.entrustedByGroups];
-      if (operatorId) newEntrustedBy[slotIndex] = null;
-      targetReq.entrustedByGroups = newEntrustedBy;
-
-      // Se assegno un operatore, resetto il contatore passaggi (no VACANTE)
-      if (!targetReq.entrustPassCount) targetReq.entrustPassCount = Array(targetReq.qty).fill(0);
-      const newPassCount = [...targetReq.entrustPassCount];
-      if (operatorId) newPassCount[slotIndex] = 0;
-      targetReq.entrustPassCount = newPassCount;
+        const b = [...(targetReq.entrustedByGroups ?? Array(targetReq.qty).fill(null))];
+        b[slotIndex] = null;
+        targetReq.entrustedByGroups = b;
+      }
 
       newReqs[reqIndex] = targetReq;
 
@@ -771,32 +740,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       const newReqs = [...ev.requirements];
       const targetReq = { ...newReqs[reqIndex] };
 
-      ensureEntrustArrays(targetReq);
+      const entrustedTo = targetReq.entrustedGroups?.[slotIndex] ?? null;
+      if (!entrustedTo) return ev;
 
-      const entrustedTo = targetReq.entrustedGroups![slotIndex] ?? null;
-      const entrustedBy = targetReq.entrustedByGroups![slotIndex] ?? null;
-      if (!entrustedTo || !entrustedBy) return ev;
+      const entrustedBy = targetReq.entrustedByGroups?.[slotIndex] ?? null;
 
-      // ✅ SOLO chi ha fatto il passaggio può annullarlo
+      // ✅ SOLO chi ha affidato può rimuovere
       if (entrustedBy !== currentCompilatoreGroup) return ev;
 
-      // Decrementa contatore passaggi (min 0)
-      const newPass = [...targetReq.entrustPassCount!];
-      newPass[slotIndex] = Math.max(0, (newPass[slotIndex] ?? 0) - 1);
-      targetReq.entrustPassCount = newPass;
-
-      // Ripristina il proprietario dello slot al gruppo che aveva passato (entrustedBy)
-      const dayCode = getMainDayCode(new Date(ev.date + 'T00:00:00'));
-      const chain = getPriorityChain(dayCode);
-      const baseOwner = chain[0] || 'A';
-
-      const newEntrusted = [...targetReq.entrustedGroups!];
-      // Se torno al proprietario base e non ci sono passaggi, possiamo lasciare null (default)
-      newEntrusted[slotIndex] = (entrustedBy === baseOwner && newPass[slotIndex] === 0) ? null : entrustedBy;
+      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
+      const newEntrusted = [...targetReq.entrustedGroups];
+      newEntrusted[slotIndex] = null;
       targetReq.entrustedGroups = newEntrusted;
 
-      // Pulisce "chi ha affidato" (non è più in stato affidato)
-      const newBy = [...targetReq.entrustedByGroups!];
+      if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
+      const newBy = [...targetReq.entrustedByGroups];
       newBy[slotIndex] = null;
       targetReq.entrustedByGroups = newBy;
 
@@ -822,34 +780,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       const newReqs = [...ev.requirements];
       const targetReq = { ...newReqs[reqIndex] };
 
-      ensureEntrustArrays(targetReq);
+      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
+      const newEntrusted = [...targetReq.entrustedGroups];
+      newEntrusted[slotIndex] = nextGroup;
+      targetReq.entrustedGroups = newEntrusted;
+
+      // ✅ memorizzo CHI ha affidato (per mostrare la X solo a lui)
+      if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
+      const newBy = [...targetReq.entrustedByGroups];
+      newBy[slotIndex] = currentOwner;
+      targetReq.entrustedByGroups = newBy;
 
       // quando affido, svuoto eventuale assegnazione
       const newAssigned = [...targetReq.assignedIds];
       newAssigned[slotIndex] = null;
       targetReq.assignedIds = newAssigned;
-
-      const MAX_PASSES = Math.max(1, priorityChain.length || 4);
-      const prevCount = targetReq.entrustPassCount?.[slotIndex] ?? 0;
-      const nextCount = Math.min(prevCount + 1, MAX_PASSES);
-      const newCounts = [...(targetReq.entrustPassCount || Array(targetReq.qty).fill(0))];
-      newCounts[slotIndex] = nextCount;
-      targetReq.entrustPassCount = newCounts;
-
-      const newEntrusted = [...(targetReq.entrustedGroups || Array(targetReq.qty).fill(null))];
-      const newBy = [...(targetReq.entrustedByGroups || Array(targetReq.qty).fill(null))];
-
-      // Se ho passato il testimone per tutti i gruppi -> VACANTE
-      if (nextCount >= MAX_PASSES) {
-        newEntrusted[slotIndex] = null;
-        newBy[slotIndex] = null;
-      } else {
-        newEntrusted[slotIndex] = nextGroup;
-        newBy[slotIndex] = currentOwner;
-      }
-
-      targetReq.entrustedGroups = newEntrusted;
-      targetReq.entrustedByGroups = newBy;
 
       newReqs[reqIndex] = targetReq;
       return { ...ev, requirements: newReqs };
@@ -1117,16 +1062,13 @@ const EventCard: React.FC<{
             const entrustedTo = req.entrustedGroups?.[unitIdx] ?? null;
             const entrustedBy = req.entrustedByGroups?.[unitIdx] ?? null;
 
-            const baseOwner = priorityChain ? (priorityChain[0] || 'A') : 'A';
-            const maxPasses = priorityChain ? priorityChain.length : 4;
-            const passCount = req.entrustPassCount?.[unitIdx] ?? 0;
-            const isVacant = !operator && passCount >= maxPasses;
-
-            const slotOwner = isVacant ? baseOwner : (entrustedTo || baseOwner);
+            // Se lo slot è "VACANTE" (tutti hanno passato), la proprietà torna al primo gruppo della chain
+            const slotOwner = (entrustedTo && entrustedTo !== 'VACANTE') ? entrustedTo : (priorityChain ? priorityChain[0] : 'A');
             const canThisCompilatoreEdit = isCompilatore && currentCompilatoreGroup === slotOwner;
 
             // ✅ Solo chi HA AFFIDATO vede la X per annullare
-            const canUndoEntrust = isCompilatore && !isVacant && !!entrustedTo && entrustedBy === currentCompilatoreGroup;
+            // Solo chi ha "passato" (entrustedBy) deve poter annullare l'affidamento
+            const canUndoEntrust = isCompilatore && entrustedBy !== null && entrustedBy === currentCompilatoreGroup;
 
             let roleBg = "bg-slate-100";
             if (req.role === 'DIR') roleBg = "bg-[#EA9E8D]";
@@ -1173,33 +1115,24 @@ const EventCard: React.FC<{
                         </button>
                       )}
 
-                      {isVacant ? (
-                        <span className="px-2 py-1 bg-red-600 text-white rounded-full text-[8px] font-black uppercase tracking-widest">
-                          Vacante
-                        </span>
-                      ) : entrustedTo ? (
-                        canUndoEntrust ? (
-                          <div className="flex items-center gap-2">
+                      {entrustedTo ? (
+                        <div className="flex items-center gap-2">
+                          {/* ✅ X affidamento: solo compilatore che ha effettuato il passaggio */}
+                          {canUndoEntrust && (
                             <button
                               onClick={(e) => { e.stopPropagation(); onClearEntrust(reqIdx, unitIdx); }}
                               className="w-5 h-5 bg-slate-50 text-slate-700 rounded-lg flex items-center justify-center hover:bg-slate-200 transition-all no-print shrink-0 border border-slate-200"
-                              title="Annulla passaggio (solo chi l’ha fatto)"
+                              title="Rimuovi affidamento (solo chi l’ha fatto)"
                             >
                               <span className="text-[12px] font-black leading-none">×</span>
                             </button>
-                            <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
-                              Passato a Gruppo {entrustedTo}
-                            </span>
-                          </div>
-                        ) : (isCompilatore && currentCompilatoreGroup === entrustedTo && entrustedBy) ? (
-                          <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
-                            Assegnato da Gruppo {entrustedBy}
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-black uppercase tracking-tight text-slate-500 whitespace-nowrap">
-                            In attesa Gruppo {entrustedTo}
-                          </span>
-                        )
+                          )}
+                              <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
+                                {entrustedBy
+                                  ? `Affidato da Gruppo ${entrustedBy} → Gruppo ${entrustedTo}`
+                                  : `Affidato a Gruppo ${entrustedTo}`}
+                              </span>
+                        </div>
                       ) : (
                         <span className="text-[8px] italic text-slate-300 font-medium uppercase tracking-tighter truncate pr-1">
                           Vacante...
@@ -1281,25 +1214,11 @@ const AssignmentPopup: React.FC<{
   const groupOwner = useMemo(() => {
     if (!event) return 'A';
     const specificReq = event.requirements.find(r => r.role === roleName);
+    const entrusted = specificReq?.entrustedGroups?.[slotIndex];
+    if (entrusted) return entrusted;
     const dayCode = getMainDayCode(new Date(event.date + 'T00:00:00'));
     const priorityChain = getPriorityChain(dayCode);
-    const entrusted = specificReq?.entrustedGroups?.[slotIndex] ?? null;
-    const passes = specificReq?.entrustPassCount?.[slotIndex] ?? 0;
-    // Se è in stato VACANTE, il testimone ritorna al gruppo prioritario
-    if (passes >= priorityChain.length) return priorityChain[0];
-    if (entrusted) return entrusted;
     return priorityChain[0];
-  }, [event, roleName, slotIndex]);
-
-  const isVacantSlot = useMemo(() => {
-    if (!event) return false;
-    const specificReq = event.requirements.find(r => r.role === roleName);
-    const dayCode = getMainDayCode(new Date(event.date + 'T00:00:00'));
-    const chain = getPriorityChain(dayCode);
-    const maxPasses = (chain && chain.length) ? chain.length : 4;
-    const passCount = specificReq?.entrustPassCount?.[slotIndex] ?? 0;
-    const isAssigned = Boolean(specificReq?.assignedIds?.[slotIndex]);
-    return passCount >= maxPasses && !isAssigned;
   }, [event, roleName, slotIndex]);
 
   const dayCode = event ? getMainDayCode(new Date(event.date + 'T00:00:00')) : '';
@@ -1365,7 +1284,7 @@ const AssignmentPopup: React.FC<{
             </div>
           </div>
 
-          {userGroup === groupOwner && !isVacantSlot && (
+          {userGroup === groupOwner && (
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEntrust(groupOwner); }}
               className="flex items-center gap-2 px-5 py-3 bg-[#720000] text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all mr-4 shadow-xl shadow-red-200 hover:bg-slate-900 active:scale-95 border border-white/10"
