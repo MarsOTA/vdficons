@@ -745,7 +745,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
 
       if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
       const newEntrusted = [...targetReq.entrustedGroups];
-      newEntrusted[slotIndex] = null;
+      newEntrusted[slotIndex] = currentGroup; // revoca: torna al gruppo che ha passato
       targetReq.entrustedGroups = newEntrusted;
 
       if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
@@ -759,36 +759,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
   };
 
   const handleEntrust = (eventId: string, reqIndex: number, slotIndex: number, currentOwner: string) => {
-    if (!guardNoRedattore()) return;
-
     const event = events.find(e => e.id === eventId);
     if (!event) return;
+    if (role === 'REDATTORE') return; // Il redattore non gestisce assegnazioni/affidamenti
 
     const dayCode = getMainDayCode(new Date(event.date + 'T00:00:00'));
     const priorityChain = getPriorityChain(dayCode);
+    if (!priorityChain || priorityChain.length === 0) return;
+
     const currentIndex = priorityChain.indexOf(currentOwner);
     const nextGroup = priorityChain[(currentIndex + 1) % priorityChain.length];
 
+    // Se si chiude il giro (tutti e 4 hanno passato), lo slot va in stato VACANTE e torna al gruppo prioritario
+    const wrappedToPriority = nextGroup === priorityChain[0];
+
     setEvents(prev => prev.map(ev => {
       if (ev.id !== eventId) return ev;
-
       const newReqs = [...ev.requirements];
       const targetReq = { ...newReqs[reqIndex] };
 
       if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
-      const newEntrusted = [...targetReq.entrustedGroups];
-      newEntrusted[slotIndex] = nextGroup;
-      targetReq.entrustedGroups = newEntrusted;
-
-      // ✅ memorizzo CHI ha affidato (per mostrare la X solo a lui)
       if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
-      const newBy = [...targetReq.entrustedByGroups];
-      newBy[slotIndex] = currentOwner;
-      targetReq.entrustedByGroups = newBy;
 
-      // quando affido, svuoto eventuale assegnazione
+      const newEntrusted = [...targetReq.entrustedGroups];
+      const newEntrustedBy = [...targetReq.entrustedByGroups];
+
+      newEntrusted[slotIndex] = wrappedToPriority ? 'VACANTE' : nextGroup;
+      newEntrustedBy[slotIndex] = currentOwner;
+
+      // Lo slot affidato non deve avere assegnazione attiva
       const newAssigned = [...targetReq.assignedIds];
       newAssigned[slotIndex] = null;
+
+      targetReq.entrustedGroups = newEntrusted;
+      targetReq.entrustedByGroups = newEntrustedBy;
       targetReq.assignedIds = newAssigned;
 
       newReqs[reqIndex] = targetReq;
@@ -799,6 +803,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
   };
 
   const handleToggleNotifications = () => {
+ = () => {
     setShowNotifications(!showNotifications);
   };
 
@@ -1054,14 +1059,16 @@ const EventCard: React.FC<{
             const assignedId = req.assignedIds[unitIdx];
             const operator = assignedId ? MOCK_OPERATORS.find(o => o.id === assignedId) : null;
 
-            const entrustedTo = req.entrustedGroups?.[unitIdx] ?? null;
+            const entrustedToRaw = req.entrustedGroups?.[unitIdx] ?? null;
+            const isVacant = entrustedToRaw === 'VACANTE';
+            const entrustedTo = isVacant ? null : entrustedToRaw;
             const entrustedBy = req.entrustedByGroups?.[unitIdx] ?? null;
 
             const slotOwner = entrustedTo || (priorityChain ? priorityChain[0] : 'A');
             const canThisCompilatoreEdit = isCompilatore && currentCompilatoreGroup === slotOwner;
 
-            // ✅ Solo chi HA AFFIDATO vede la X per annullare
-            const canUndoEntrust = isCompilatore && !!entrustedTo && entrustedBy === currentCompilatoreGroup;
+            // ✅ Solo chi HA FATTO IL PASSAGGIO vede la X per annullare (mai il ricevente)
+            const canUndoEntrust = isCompilatore && !!entrustedToRaw && !isVacant && entrustedBy === currentCompilatoreGroup;
 
             let roleBg = "bg-slate-100";
             if (req.role === 'DIR') roleBg = "bg-[#EA9E8D]";
@@ -1108,27 +1115,31 @@ const EventCard: React.FC<{
                         </button>
                       )}
 
-                      {entrustedTo ? (
-                        <div className="flex items-center gap-2">
-                          {/* ✅ X affidamento: solo compilatore che ha effettuato il passaggio */}
-                          {canUndoEntrust && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onClearEntrust(reqIdx, unitIdx); }}
-                              className="w-5 h-5 bg-slate-50 text-slate-700 rounded-lg flex items-center justify-center hover:bg-slate-200 transition-all no-print shrink-0 border border-slate-200"
-                              title="Rimuovi affidamento (solo chi l’ha fatto)"
-                            >
-                              <span className="text-[12px] font-black leading-none">×</span>
-                            </button>
-                          )}
-                          <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
-                            Affidato a Gruppo {entrustedTo}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[8px] italic text-slate-300 font-medium uppercase tracking-tighter truncate pr-1">
-                          Vacante...
-                        </span>
-                      )}
+                      {isVacant ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[8px] font-black uppercase tracking-widest bg-red-600 text-white px-2 py-1 rounded-full">VACANTE</span>
+                            <span className="text-[8px] font-black uppercase tracking-tight text-slate-500 whitespace-nowrap">
+                              Testimone completato
+                            </span>
+                          </div>
+                       ) : entrustedTo ? (
+                          <div className="flex items-center gap-2">
+                             {canUndoEntrust && (
+                               <button
+                                 onClick={(e) => { e.stopPropagation(); onClearEntrust(reqIdx, unitIdx); }}
+                                 className="w-5 h-5 bg-slate-50 text-slate-700 rounded-lg flex items-center justify-center hover:bg-slate-200 transition-all no-print shrink-0 border border-slate-200"
+                                 title="Annulla passaggio (torna al gruppo precedente)"
+                               >
+                                 <span className="text-[12px] font-black leading-none">×</span>
+                               </button>
+                             )}
+                             <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
+                               Affidato da Gruppo {entrustedBy ?? '—'}
+                             </span>
+                          </div>
+                       ) : (
+                          <span className="text-[8px] italic text-slate-300 font-medium uppercase tracking-tighter truncate pr-1">Da assegnare...</span>
+                       )}
                     </div>
                   )}
                 </div>
@@ -1188,6 +1199,9 @@ const AssignmentPopup: React.FC<{
   const event = events.find(e => e.id === eventId);
   const userGroup = userRole.startsWith('COMPILATORE') ? userRole.split('_')[1] : null;
 
+  const entrustedRawForSlot = event?.requirements.find(r => r.role === roleName)?.entrustedGroups?.[slotIndex] ?? null;
+  const isVacantSlot = entrustedRawForSlot === 'VACANTE';
+
   const globallyAssignedIdsForDate = useMemo(() => {
     if (!event) return new Set<string>();
     const date = event.date;
@@ -1205,10 +1219,14 @@ const AssignmentPopup: React.FC<{
   const groupOwner = useMemo(() => {
     if (!event) return 'A';
     const specificReq = event.requirements.find(r => r.role === roleName);
-    const entrusted = specificReq?.entrustedGroups?.[slotIndex];
-    if (entrusted) return entrusted;
+    const entrustedRaw = specificReq?.entrustedGroups?.[slotIndex] ?? null;
     const dayCode = getMainDayCode(new Date(event.date + 'T00:00:00'));
     const priorityChain = getPriorityChain(dayCode);
+
+    // Se è VACANTE, lo slot torna al gruppo prioritario (chain[0])
+    if (entrustedRaw === 'VACANTE') return priorityChain[0];
+
+    if (entrustedRaw) return entrustedRaw;
     return priorityChain[0];
   }, [event, roleName, slotIndex]);
 
@@ -1275,7 +1293,7 @@ const AssignmentPopup: React.FC<{
             </div>
           </div>
 
-          {userGroup === groupOwner && (
+          {userGroup === groupOwner && !isVacantSlot && (
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEntrust(groupOwner); }}
               className="flex items-center gap-2 px-5 py-3 bg-[#720000] text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all mr-4 shadow-xl shadow-red-200 hover:bg-slate-900 active:scale-95 border border-white/10"
