@@ -697,21 +697,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       targetReq.assignedIds = newAssigned;
 
       // Se assegno un operatore, annullo eventuale affidamento sullo slot
-      // IMPORTANTISSIMO:
-      // NON cancellare entrustedGroups/entrustedByGroups quando assegni un operatore.
-      // Servono a mantenere la "proprietà" dello slot (chi può mettere/togliere l'operatore)
-      // anche dopo l'assegnazione.
-      // Unica eccezione: se lo slot era in stato VACANTE e il gruppo prioritario assegna,
-      // allora resettiamo il VACANTE.
-      if (operatorId && targetReq.entrustedGroups?.[slotIndex] === 'VACANTE') {
-        const g = [...(targetReq.entrustedGroups ?? Array(targetReq.qty).fill(null))];
-        g[slotIndex] = null;
-        targetReq.entrustedGroups = g;
+      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
+      const newEntries = [...targetReq.entrustedGroups];
+      // NB: non azzerare l'owner dello slot quando si assegna un operatore (altrimenti torna al gruppo prioritario)
+      targetReq.entrustedGroups = newEntries;
 
-        const b = [...(targetReq.entrustedByGroups ?? Array(targetReq.qty).fill(null))];
-        b[slotIndex] = null;
-        targetReq.entrustedByGroups = b;
-      }
+      // Se assegno un operatore, annullo anche "chi ha affidato" (perché non è più affidato)
+      if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
+      const newEntrustedBy = [...targetReq.entrustedByGroups];
+      if (operatorId) newEntrustedBy[slotIndex] = null;
+      targetReq.entrustedByGroups = newEntrustedBy;
 
       newReqs[reqIndex] = targetReq;
 
@@ -750,7 +745,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
 
       if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
       const newEntrusted = [...targetReq.entrustedGroups];
-      newEntrusted[slotIndex] = null;
+      // Annulla l'affidamento riportando lo slot IN CARICO al compilatore che lo aveva passato
+      newEntrusted[slotIndex] = currentCompilatoreGroup || null;
       targetReq.entrustedGroups = newEntrusted;
 
       if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
@@ -1062,13 +1058,11 @@ const EventCard: React.FC<{
             const entrustedTo = req.entrustedGroups?.[unitIdx] ?? null;
             const entrustedBy = req.entrustedByGroups?.[unitIdx] ?? null;
 
-            // Se lo slot è "VACANTE" (tutti hanno passato), la proprietà torna al primo gruppo della chain
-            const slotOwner = (entrustedTo && entrustedTo !== 'VACANTE') ? entrustedTo : (priorityChain ? priorityChain[0] : 'A');
+            const slotOwner = entrustedTo || (priorityChain ? priorityChain[0] : 'A');
             const canThisCompilatoreEdit = isCompilatore && currentCompilatoreGroup === slotOwner;
 
             // ✅ Solo chi HA AFFIDATO vede la X per annullare
-            // Solo chi ha "passato" (entrustedBy) deve poter annullare l'affidamento
-            const canUndoEntrust = isCompilatore && entrustedBy !== null && entrustedBy === currentCompilatoreGroup;
+            const canUndoEntrust = isCompilatore && !!entrustedTo && entrustedBy === currentCompilatoreGroup;
 
             let roleBg = "bg-slate-100";
             if (req.role === 'DIR') roleBg = "bg-[#EA9E8D]";
@@ -1127,11 +1121,9 @@ const EventCard: React.FC<{
                               <span className="text-[12px] font-black leading-none">×</span>
                             </button>
                           )}
-                              <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
-                                {entrustedBy
-                                  ? `Affidato da Gruppo ${entrustedBy} → Gruppo ${entrustedTo}`
-                                  : `Affidato a Gruppo ${entrustedTo}`}
-                              </span>
+                          <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
+                            Affidato a Gruppo {entrustedTo}
+                          </span>
                         </div>
                       ) : (
                         <span className="text-[8px] italic text-slate-300 font-medium uppercase tracking-tighter truncate pr-1">
