@@ -27,11 +27,8 @@ export interface PersonnelRequirement {
   qty: number;
 
   assignedIds: (string | null)[];                 // dimensione qty
-  entrustedGroups?: (string | null)[];            // dimensione qty: gruppo attualmente proprietario dello slot (A/B/C/D) oppure null
+  entrustedGroups?: (string | null)[];            // dimensione qty: 'A'|'B'|'C'|'D'|'VACANTE'|null
   entrustedByGroups?: (string | null)[];          // dimensione qty: chi ha passato (provenienza)
-
-  // Contatore passaggi del testimone (0..4). Quando >=4 e slot ancora vuoto, lo slot diventa "VACANTE".
-  entrustPassCount?: number[];                    // dimensione qty
 
   specializations?: string[];
 }
