@@ -803,7 +803,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
   };
 
   const handleToggleNotifications = () => {
- = () => {
     setShowNotifications(!showNotifications);
   };
 
