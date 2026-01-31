@@ -430,7 +430,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
 
       const formatDateHeader = (iso: string) => {
         const [y, m, d] = iso.split('-');
-        return `${d}-${m}-${y}`;
+        // richiesto: dd/mm/yyyy
+        return `${d}/${m}/${y}`;
       };
 
       const calcDurationHours = (timeWindow: string) => {
@@ -568,12 +569,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
 
         ws.mergeCells(1, 1, 1, 22);
         const headerCell = ws.getCell(1, 1);
-        headerCell.value = {
-          richText: [
-            { text: 'DATA GIORNO  ', font: { name: 'Calibri', size: 24, bold: true } },
-            { text: `Data: ${formatDateHeader(selectedDate)}`, font: { name: 'Calibri', size: 20, bold: true } },
-          ],
-        };
+        // Header richiesto: "Data: dd/mm/yyyy" tutto 24pt bold
+        headerCell.value = `Data: ${formatDateHeader(selectedDate)}`;
+        headerCell.font = { name: 'Calibri', size: 24, bold: true };
         headerCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
         ws.mergeCells(39, 1, 39, 22);
