@@ -10,12 +10,6 @@ import { jsPDF } from 'jspdf';
 import excelFileIcon from '../assets/icons/excel-file-type-svgrepo-com.svg';
 import pdfFileIcon from '../assets/icons/file-pdf-svgrepo-com.svg';
 
-const CalendarIcon = ({ className }: { className?: string }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>
-  </svg>
-);
-
 const UserPlusIcon = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -69,7 +63,9 @@ const ChevronRight = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" he
 
 // --- Custom Calendar Component ---
 const CustomCalendar: React.FC<{ selectedDate: string, onSelect: (date: string) => void }> = ({ selectedDate, onSelect }) => {
-  const [viewDate, setViewDate] = useState(new Date((selectedDate ? selectedDate + 'T00:00:00' : new Date().toISOString())));
+  const safeDate = selectedDate || new Date().toISOString().slice(0, 10);
+  const [viewDate, setViewDate] = useState(new Date(`${safeDate}T00:00:00`));
+
   const currentYear = viewDate.getFullYear();
   const currentMonth = viewDate.getMonth();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -147,16 +143,10 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({ count
         <br /><strong className="text-red-600 font-black">L’operazione non è reversibile.</strong>
       </p>
       <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={onCancel}
-          className="px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
-        >
+        <button onClick={onCancel} className="px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors">
           Annulla
         </button>
-        <button
-          onClick={onConfirm}
-          className="px-6 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-200"
-        >
+        <button onClick={onConfirm} className="px-6 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-200">
           Elimina ora
         </button>
       </div>
@@ -239,24 +229,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     setDeleteRequest(null);
   };
 
-  // ✅ FIX #2: clearEntrust fuori da updateAssignment e nello scope giusto
+  // ✅ FIX: clearEntrust nello scope corretto (Dashboard) e NON dentro updateAssignment
   const clearEntrust = (eventId: string, reqIndex: number, slotIndex: number) => {
-    setEvents(prev =>
-      prev.map(ev => {
-        if (ev.id !== eventId) return ev;
+    setEvents(prev => prev.map(ev => {
+      if (ev.id !== eventId) return ev;
+      const newReqs = [...ev.requirements];
+      const targetReq = { ...newReqs[reqIndex] };
 
-        const newReqs = [...ev.requirements];
-        const targetReq = { ...newReqs[reqIndex] };
+      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
+      const newEntrusted = [...targetReq.entrustedGroups];
+      newEntrusted[slotIndex] = null;
+      targetReq.entrustedGroups = newEntrusted;
 
-        if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
-        const newEntrusted = [...targetReq.entrustedGroups];
-        newEntrusted[slotIndex] = null;
-        targetReq.entrustedGroups = newEntrusted;
-
-        newReqs[reqIndex] = targetReq;
-        return { ...ev, requirements: newReqs };
-      })
-    );
+      newReqs[reqIndex] = targetReq;
+      return { ...ev, requirements: newReqs };
+    }));
   };
 
   const handleDownloadPDF = async () => {
@@ -431,7 +418,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     try {
       const wb = new (ExcelJS as any).Workbook();
 
-      const EVENTS_PER_PAGE = 9;
+      const EVENTS_PER_PAGE = 9; // 3x3
       const totalPages = Math.max(1, Math.ceil(displayEvents.length / EVENTS_PER_PAGE));
 
       const CARD_COLS = 6;
@@ -691,40 +678,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     }
   };
 
-  // ✅ updateAssignment ripulita (senza funzioni annidate)
   const updateAssignment = (eventId: string, reqIndex: number, slotIndex: number, operatorId: string | null) => {
-    setEvents(prev =>
-      prev.map(ev => {
-        if (ev.id !== eventId) return ev;
+    setEvents(prev => prev.map(ev => {
+      if (ev.id !== eventId) return ev;
 
-        const newReqs = [...ev.requirements];
-        const targetReq = { ...newReqs[reqIndex] };
+      const newReqs = [...ev.requirements];
+      const targetReq = { ...newReqs[reqIndex] };
 
-        const newAssigned = [...targetReq.assignedIds];
-        newAssigned[slotIndex] = operatorId;
-        targetReq.assignedIds = newAssigned;
+      const newAssigned = [...targetReq.assignedIds];
+      newAssigned[slotIndex] = operatorId;
+      targetReq.assignedIds = newAssigned;
 
-        if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
-        const newEntries = [...targetReq.entrustedGroups];
+      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
+      const newEntries = [...targetReq.entrustedGroups];
+      if (operatorId) newEntries[slotIndex] = null; // se assegno, annullo eventuale affidamento
+      targetReq.entrustedGroups = newEntries;
 
-        if (operatorId) newEntries[slotIndex] = null;
-        targetReq.entrustedGroups = newEntries;
+      newReqs[reqIndex] = targetReq;
 
-        newReqs[reqIndex] = targetReq;
+      const totalUnits = newReqs.reduce((sum, r) => sum + r.qty, 0);
+      const filledUnits = newReqs.reduce((sum, r) => sum + r.assignedIds.filter(Boolean).length, 0);
 
-        const totalUnits = newReqs.reduce((sum, r) => sum + r.qty, 0);
-        const filledUnits = newReqs.reduce((sum, r) => sum + r.assignedIds.filter(Boolean).length, 0);
+      let newStatus = ev.status;
+      if (filledUnits === totalUnits && totalUnits > 0) newStatus = EventStatus.COMPLETATO;
+      else if (filledUnits > 0) newStatus = EventStatus.IN_COMPILAZIONE;
 
-        let newStatus = ev.status;
-        if (filledUnits === totalUnits && totalUnits > 0) {
-          newStatus = EventStatus.COMPLETATO;
-        } else if (filledUnits > 0) {
-          newStatus = EventStatus.IN_COMPILAZIONE;
-        }
-
-        return { ...ev, requirements: newReqs, status: newStatus };
-      })
-    );
+      return { ...ev, requirements: newReqs, status: newStatus };
+    }));
   };
 
   const handleEntrust = (eventId: string, reqIndex: number, slotIndex: number, currentOwner: string) => {
@@ -739,13 +719,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       if (ev.id !== eventId) return ev;
       const newReqs = [...ev.requirements];
       const targetReq = { ...newReqs[reqIndex] };
+
       if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
       const newEntrusted = [...targetReq.entrustedGroups];
       newEntrusted[slotIndex] = nextGroup;
       targetReq.entrustedGroups = newEntrusted;
+
       const newAssigned = [...targetReq.assignedIds];
       newAssigned[slotIndex] = null;
       targetReq.assignedIds = newAssigned;
+
       newReqs[reqIndex] = targetReq;
       return { ...ev, requirements: newReqs };
     }));
@@ -767,7 +750,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     <div className="mx-auto p-3 lg:p-4 space-y-4 pb-32 transition-all duration-500 relative">
       <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-3 rounded-[1.5rem] border border-slate-200 shadow-sm no-print relative z-30">
         <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => navigateDay(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-200 text-slate-400 hover:text-[#720000] transition-all"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
+          <button onClick={() => navigateDay(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-200 text-slate-400 hover:text-[#720000] transition-all">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
+          </button>
 
           <div className="relative" ref={datePickerRef}>
             <button
@@ -796,7 +781,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
             )}
           </div>
 
-          <button onClick={() => navigateDay(1)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-200 text-slate-400 hover:text-[#720000] transition-all"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg></button>
+          <button onClick={() => navigateDay(1)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-200 text-slate-400 hover:text-[#720000] transition-all">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
+          </button>
         </div>
 
         <div className="h-8 w-px bg-slate-100 hidden lg:block"></div>
@@ -919,8 +906,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
             onToggle={() => setExpandedIds(prev => prev.includes(event.id) ? prev.filter(id => id !== event.id) : [...prev, event.id])}
             onOpenAssignment={(roleName, reqIdx, slotIdx) => setAssignmentModal({ eventId: event.id, roleName, reqIndex: reqIdx, slotIndex: slotIdx })}
             onRemoveAssignment={(reqIdx, slotIdx) => updateAssignment(event.id, reqIdx, slotIdx, null)}
+            onClearEntrust={(reqIdx, slotIdx) => clearEntrust(event.id, reqIdx, slotIdx)}
             onDeleteRequest={() => setDeleteRequest([event.id])}
-            clearEntrust={clearEntrust}
           />
         ))}
       </div>
@@ -957,9 +944,9 @@ const EventCard: React.FC<{
   onToggle: () => void;
   onOpenAssignment: (role: string, idx: number, slotIdx: number) => void;
   onRemoveAssignment: (idx: number, slotIdx: number) => void;
+  onClearEntrust: (idx: number, slotIdx: number) => void;
   onDeleteRequest: () => void;
-  clearEntrust: (eventId: string, reqIndex: number, slotIndex: number) => void;
-}> = ({ event, role, isExpanded, onToggle, onOpenAssignment, onRemoveAssignment, onDeleteRequest, clearEntrust }) => {
+}> = ({ event, role, isExpanded, onToggle, onOpenAssignment, onRemoveAssignment, onClearEntrust, onDeleteRequest }) => {
   const currentCompilatoreGroup = role.startsWith('COMPILATORE') ? role.split('_')[1] : null;
   const isCompilatore = !!currentCompilatoreGroup;
   const isRedattore = role === 'REDATTORE';
@@ -1019,6 +1006,7 @@ const EventCard: React.FC<{
                     {operator ? operator.rank : req.role}
                   </span>
                 </div>
+
                 <div className="flex-1 flex items-center px-2 bg-white min-w-0 gap-2">
                   {operator ? (
                     <div className="flex items-center w-full min-w-0 gap-2">
@@ -1043,12 +1031,12 @@ const EventCard: React.FC<{
                         </button>
                       )}
 
-                      {/* ✅ FIX #1: ternaria corretta (niente ") : () : (") */}
+                      {/* ✅ FIX: ternario corretto (Affidato vs Vacante) */}
                       {entrustedTo ? (
                         <div className="flex items-center gap-2">
                           {(isRedattore || canThisCompilatoreEdit) && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); clearEntrust(event.id, reqIdx, unitIdx); }}
+                              onClick={(e) => { e.stopPropagation(); onClearEntrust(reqIdx, unitIdx); }}
                               className="w-5 h-5 bg-slate-50 text-slate-700 rounded-lg flex items-center justify-center hover:bg-slate-200 transition-all no-print shrink-0 border border-slate-200"
                               title="Rimuovi affidamento"
                             >
@@ -1110,7 +1098,7 @@ const AssignmentPopup: React.FC<{
   eventId: string; roleName: string; userRole: UserRole; onClose: () => void;
   onAssign: (id: string) => void; onEntrust: (currentOwner: string) => void;
   assignedIds: (string | null)[]; slotIndex: number; events: OperationalEvent[];
-}> = ({ eventId, roleName, userRole, onClose, onAssign, onEntrust, assignedIds, slotIndex, events }) => {
+}> = ({ eventId, roleName, userRole, onClose, onAssign, onEntrust, slotIndex, events }) => {
   const [search, setSearch] = useState('');
   const [specFilter, setSpecFilter] = useState('');
   const [sedePopupFilter, setSedePopupFilter] = useState('TUTTE');
@@ -1179,7 +1167,6 @@ const AssignmentPopup: React.FC<{
 
       const pA = getPriority(a.subgroup);
       const pB = getPriority(b.subgroup);
-
       if (pA !== pB) return pA - pB;
 
       const valA = a[sortConfig.key];
@@ -1205,6 +1192,7 @@ const AssignmentPopup: React.FC<{
               <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest">Compilatore Autorizzato</p>
             </div>
           </div>
+
           {userGroup === groupOwner && (
             <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEntrust(groupOwner); }} className="flex items-center gap-2 px-5 py-3 bg-[#720000] text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all mr-4 shadow-xl shadow-red-200 hover:bg-slate-900 active:scale-95 border border-white/10"><ShareIcon className="w-3.5 h-3.5" /> Passa a Gruppo {nextGroup}</button>
           )}
@@ -1265,13 +1253,7 @@ const AssignmentPopup: React.FC<{
                 </div>
 
                 <div className="col-span-2 flex items-center justify-start pl-1">
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-black border shadow-sm ${
-                    op.group === 'A' ? 'bg-red-50 text-red-700 border-red-100' :
-                    op.group === 'B' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                    op.group === 'C' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                    op.group === 'D' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                    'bg-slate-800 text-white border-slate-900'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-black border shadow-sm ${op.group === 'A' ? 'bg-red-50 text-red-700 border-red-100' : op.group === 'B' ? 'bg-blue-50 text-blue-700 border-blue-100' : op.group === 'C' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : op.group === 'D' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-slate-800 text-white border-slate-900'}`}>
                     {op.subgroup}
                   </span>
                 </div>
@@ -1286,7 +1268,7 @@ const AssignmentPopup: React.FC<{
 
                 <div className="col-span-2 flex flex-wrap gap-1">
                   {op.specializations?.slice(0, 2).map(s => (
-                    // ✅ FIX #3: rimosso backslash finale nel className
+                    // ✅ FIX: rimosso \" che rompe il build
                     <span key={s} className="bg-slate-100 text-slate-500 text-[7px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter whitespace-nowrap border border-slate-200">{s}</span>
                   ))}
                   {op.specializations && op.specializations.length > 2 && (
