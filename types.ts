@@ -23,11 +23,13 @@ export interface VehicleRequirements {
 }
 
 export interface PersonnelRequirement {
-  role: 'DIR' | 'CP' | 'VIG' | 'ALTRO';   // <- rimosso 'AUT'
+  role: 'DIR' | 'CP' | 'VIG' | 'ALTRO';
   qty: number;
-  assignedIds: (string | null)[];
-  entrustedGroups?: (string | null)[];
-  entrustedByGroups?: (string | null)[]; // <- questa resta (serve per la X)
+
+  assignedIds: (string | null)[];                 // dimensione qty
+  entrustedGroups?: (string | null)[];            // dimensione qty: 'A'|'B'|'C'|'D'|'VACANTE'|null
+  entrustedByGroups?: (string | null)[];          // dimensione qty: chi ha passato (provenienza)
+
   specializations?: string[];
 }
 
@@ -52,11 +54,11 @@ export interface Operator {
   rank: string;
   group: string; // A, B, C, D
   subgroup: string; // A1, A2...
-  qualification: 'DIR' | 'CP' | 'VIG' |'ALTRO';
+  qualification: 'DIR' | 'CP' | 'VIG' | 'ALTRO';
   available: boolean;
   statusMessage?: string;
   assignedHours: number;
   specializations?: string[];
-  sede?: string; // Sede di appartenenza
-  tipoPatente?: string; // Nuova proprietà
+  sede?: string;
+  tipoPatente?: string;
 }
