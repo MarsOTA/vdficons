@@ -496,7 +496,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
             const assignedId = req.assignedIds?.[i];
             const operator = assignedId ? MOCK_OPERATORS.find(o => o.id === assignedId) : null;
             const entrustedTo = req.entrustedGroups?.[i];
-            const name = operator ? operator.name : (entrustTo ? `AFFIDATO ${entrustedTo}` : '');
+            const name = operator ? operator.name : (entrustedTo ? `AFFIDATO ${entrustedTo}` : '');
             if (name) rows.push({ q: 'ALT', n: name });
           }
         });
