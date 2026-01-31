@@ -1,12 +1,11 @@
-
 export type ScreenType = 'DASHBOARD' | 'STAFF' | 'CREAZIONE' | 'GENERATORE';
 
-export type UserRole = 
-  | 'REDATTORE' 
-  | 'APPROVATORE' 
-  | 'COMPILATORE_A' 
-  | 'COMPILATORE_B' 
-  | 'COMPILATORE_C' 
+export type UserRole =
+  | 'REDATTORE'
+  | 'APPROVATORE'
+  | 'COMPILATORE_A'
+  | 'COMPILATORE_B'
+  | 'COMPILATORE_C'
   | 'COMPILATORE_D';
 
 export enum EventStatus {
@@ -28,6 +27,7 @@ export interface PersonnelRequirement {
   qty: number;
   assignedIds: (string | null)[]; // Array di dimensione 'qty', mantiene la posizione dello slot
   entrustedGroups?: (string | null)[]; // Array di dimensione 'qty'
+  entrustedByGroups?: (string | null)[]; // ✅ NUOVO: gruppo che ha fatto l'affidamento (A/B/C/D)
   specializations?: string[];
 }
 
