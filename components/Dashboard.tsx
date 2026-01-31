@@ -889,9 +889,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
             onClick={handleDownloadExcel}
             title="Scarica Excel"
             aria-label="Scarica Excel"
-            className="w-10 h-10 flex items-center justify-center bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all"
+            className="w-10 h-10 flex items-center justify-center bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all group"
           >
-            <img src={excelFileIcon} alt="Excel" className="w-6 h-6" />
+            <img src={excelFileIcon} alt="Excel" className="w-6 h-6 transition filter group-hover:brightness-0 group-hover:invert" />
           </button>
 
           <button
@@ -899,7 +899,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
             disabled={isPdfLoading}
             title={isPdfLoading ? 'Generazione PDF...' : 'Scarica PDF'}
             aria-label={isPdfLoading ? 'Generazione PDF...' : 'Scarica PDF'}
-            className="w-10 h-10 flex items-center justify-center bg-red-50 border border-red-200 rounded-xl text-red-700 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all disabled:opacity-50"
+            className="w-10 h-10 flex items-center justify-center bg-red-50 border border-red-200 rounded-xl text-red-700 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all disabled:opacity-50 group"
           >
             {isPdfLoading ? (
               <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -907,7 +907,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
             ) : (
-              <img src={pdfFileIcon} alt="PDF" className="w-6 h-6" />
+              <img src={pdfFileIcon} alt="PDF" className="w-6 h-6 transition filter group-hover:brightness-0 group-hover:invert" />
             )}
           </button>
 
