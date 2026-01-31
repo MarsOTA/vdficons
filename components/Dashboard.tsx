@@ -272,20 +272,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     toggleExpandAll(true);
     setZoomLevel(1);
 
-    // Colonne dinamiche: con pochi eventi allarghiamo le card
-    const count = displayEvents.length;
-    let cols = 4;
-    if (count <= 1) cols = 1;
-    else if (count <= 4) cols = 2;
-    else if (count <= 9) cols = 3;
+    // PDF layout fisso: 3 colonne x 2 righe per pagina (evita card tagliate tra pagine)
+    const cols = 3;
+    const rowsPerPage = 2;
+    const perPage = cols * rowsPerPage;
 
-    // Larghezza export (px): più piccola => testo più grande sul PDF a parità di pagina
-    const cardMinWidth = cols <= 2 ? 520 : cols === 3 ? 460 : 420;
+    // Larghezza export (px): aumenta un filo per far entrare 2 righe in A3 senza tagli
+    const cardMinWidth = 520;
     const gap = 24;
     const padding = 40;
     const exportWidth = cols * cardMinWidth + (cols - 1) * gap + padding * 2;
 
-    await new Promise(resolve => setTimeout(resolve, 900));
+    const totalPages = Math.max(1, Math.ceil(displayEvents.length / perPage));
+await new Promise(resolve => setTimeout(resolve, 900));
 
     try {
       // Layout stabile per la stampa
@@ -325,66 +324,103 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       `;
       container.prepend(headerDiv);
 
-      const canvas = await html2canvas(container, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: exportWidth,
-        onclone: (clonedDoc) => {
-          const clonedEl = clonedDoc.querySelector('.forced-pdf-grid') as HTMLElement;
-          if (!clonedEl) return;
+      // PDF: A3 landscape con paginazione per "griglia" (3x2) per evitare card tagliate
+      const pdf = new jsPDF('l', 'mm', 'a3');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
 
-          clonedEl.style.display = 'grid';
-          clonedEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-          clonedEl.style.gap = `${gap}px`;
-          clonedEl.style.width = `${exportWidth}px`;
-          clonedEl.style.padding = `${padding}px`;
-          clonedEl.style.overflow = 'visible';
+      const cards = Array.from(container.querySelectorAll('.print-card-break')) as HTMLElement[];
+      const originalDisplays = cards.map(c => c.style.display);
 
-          // Evita tagli: niente truncate/overflow hidden in PDF
-          clonedDoc.querySelectorAll('.truncate').forEach((el: any) => {
-            el.style.whiteSpace = 'normal';
-            el.style.overflow = 'visible';
-            el.style.textOverflow = 'clip';
-          });
+      for (let page = 0; page < totalPages; page++) {
+        const from = page * perPage;
+        const to = from + perPage;
 
-          // Allarga e "allunga" le card in PDF
-          clonedDoc.querySelectorAll('.print-card-break').forEach((el: any) => {
-            el.style.overflow = 'visible';
-            el.style.minHeight = '320px';
-          });
+        // Mostra solo le card della pagina corrente
+        cards.forEach((c, i) => { c.style.display = (i >= from && i < to) ? '' : 'none'; });
 
-          // Righe requisiti più alte per far respirare i testi
-          clonedDoc.querySelectorAll('[data-requirement-row="true"]').forEach((el: any) => {
-            el.style.height = '44px';
-          });
+        await new Promise(resolve => setTimeout(resolve, 200));
 
-          // Badge/percentuale un filo più grandi (se marcati)
-          clonedDoc.querySelectorAll('[data-pdf-badge="true"]').forEach((el: any) => {
-            el.style.fontSize = '10px';
-            // Evita tagli delle qualifiche nel PDF (es. "VIGILE E COORD")
-            el.style.whiteSpace = 'normal';
-            el.style.overflow = 'visible';
-            el.style.textOverflow = 'clip';
-            el.style.wordBreak = 'break-word';
-            el.style.lineHeight = '1.05';
+        const canvas = await html2canvas(container, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          windowWidth: exportWidth,
+          onclone: (clonedDoc) => {
+            const clonedEl = clonedDoc.querySelector('.forced-pdf-grid') as HTMLElement;
+            if (!clonedEl) return;
 
-            // Allarga la colonna qualifica (sovrascrive w-32)
-            const parent = el.parentElement as HTMLElement | null;
-            if (parent) {
-              parent.style.overflow = 'visible';
-              parent.style.width = '140px';
-              parent.style.flex = '0 0 140px';
-            }
-          });
-          clonedDoc.querySelectorAll('[data-pdf-percent="true"]').forEach((el: any) => {
-            el.style.fontSize = '12px';
-          });
+            clonedEl.style.display = 'grid';
+            clonedEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            clonedEl.style.gap = `${gap}px`;
+            clonedEl.style.width = `${exportWidth}px`;
+            clonedEl.style.padding = `${padding}px`;
+            clonedEl.style.overflow = 'visible';
+
+            // Evita tagli: niente truncate/overflow hidden in PDF
+            clonedDoc.querySelectorAll('.truncate').forEach((el: any) => {
+              el.style.whiteSpace = 'normal';
+              el.style.overflow = 'visible';
+              el.style.textOverflow = 'clip';
+            });
+
+            // Allunga le card in PDF
+            clonedDoc.querySelectorAll('.print-card-break').forEach((el: any) => {
+              el.style.overflow = 'visible';
+              el.style.minHeight = '320px';
+            });
+
+            // Righe requisiti più alte
+            clonedDoc.querySelectorAll('[data-requirement-row="true"]').forEach((el: any) => {
+              el.style.height = '44px';
+            });
+
+            // Badge/percentuale più grandi + anti-taglio qualifiche
+            clonedDoc.querySelectorAll('[data-pdf-badge="true"]').forEach((el: any) => {
+              el.style.fontSize = '10px';
+              el.style.whiteSpace = 'normal';
+              el.style.overflow = 'visible';
+              el.style.textOverflow = 'clip';
+              el.style.wordBreak = 'break-word';
+              el.style.lineHeight = '1.05';
+
+              const parent = el.parentElement as HTMLElement | null;
+              if (parent) {
+                parent.style.overflow = 'visible';
+                parent.style.width = '160px';
+                parent.style.flex = '0 0 160px';
+              }
+            });
+            clonedDoc.querySelectorAll('[data-pdf-percent="true"]').forEach((el: any) => {
+              el.style.fontSize = '12px';
+            });
+          }
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const imgW = canvas.width;
+        const imgH = canvas.height;
+        const ratio = imgW / imgH;
+
+        let w = pdfWidth;
+        let h = w / ratio;
+        let x = 0;
+        let y = 0;
+
+        if (h > pdfHeight) {
+          h = pdfHeight;
+          w = h * ratio;
+          x = (pdfWidth - w) / 2;
         }
-      });
 
-      // Ripristina DOM
+        if (page > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', x, y, w, h, undefined, 'FAST');
+      }
+
+      // Ripristina display card
+      cards.forEach((c, i) => { c.style.display = originalDisplays[i]; });
+// Ripristina DOM
       container.removeChild(headerDiv);
       container.className = originalClassName;
       container.style.cssText = originalStyle;
@@ -392,30 +428,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       setZoomLevel(previousZoom);
       setExpandedIds(previousExpanded);
 
-      // PDF: A3 landscape + multi-pagina
-      const pdf = new jsPDF('l', 'mm', 'a3');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-
-      const imgData = canvas.toDataURL('image/png');
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-
-      const renderedHeight = (imgHeight * pdfWidth) / imgWidth;
-
-      let heightLeft = renderedHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, renderedHeight, undefined, 'FAST');
-      heightLeft -= pdfHeight;
-
-      while (heightLeft > 0) {
-        position -= pdfHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, renderedHeight, undefined, 'FAST');
-        heightLeft -= pdfHeight;
-      }
-
+      // Salva PDF
       pdf.save(`Report_Servizi_VVF_MILANO_${selectedDate}.pdf`);
     } catch (err) {
       console.error("PDF Export Error:", err);
@@ -736,6 +749,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       if (ev.id !== eventId) return ev;
       const newReqs = [...ev.requirements];
       const targetReq = { ...newReqs[reqIndex] };
+
+
+  const clearEntrust = (eventId: string, reqIndex: number, slotIndex: number) => {
+    setEvents(prev => prev.map(ev => {
+      if (ev.id !== eventId) return ev;
+      const newReqs = [...ev.requirements];
+      const targetReq = { ...newReqs[reqIndex] };
+      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
+      const newEntrusted = [...targetReq.entrustedGroups];
+      newEntrusted[slotIndex] = null;
+      targetReq.entrustedGroups = newEntrusted;
+
+      // Non tocchiamo assegnazioni qui (di norma è già null quando c'è affidamento)
+      newReqs[reqIndex] = targetReq;
+      return { ...ev, requirements: newReqs };
+    }));
+  };
       
       const newAssigned = [...targetReq.assignedIds];
       newAssigned[slotIndex] = operatorId;
@@ -743,6 +773,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       
       if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
       const newEntries = [...targetReq.entrustedGroups];
+      // Se assegno un operatore, annullo eventuale "affidamento" precedente sullo slot
+      if (operatorId) newEntries[slotIndex] = null;
       targetReq.entrustedGroups = newEntries;
 
       newReqs[reqIndex] = targetReq;
@@ -1046,7 +1078,7 @@ const EventCard: React.FC<{
                 <div className="flex-1 flex items-center px-2 bg-white min-w-0 gap-2">
                   {operator ? (
                     <div className="flex items-center w-full min-w-0 gap-2">
-                       {isCompilatore && (operator.group === currentCompilatoreGroup || operator.group === 'EXTRA') && (
+                       {(isRedattore || (isCompilatore && canThisCompilatoreEdit)) && (
                          <button 
                            onClick={(e) => { e.stopPropagation(); onRemoveAssignment(reqIdx, unitIdx); }} 
                            className="w-5 h-5 bg-red-50 text-[#720000] rounded-lg flex items-center justify-center hover:bg-[#A80505] hover:text-white transition-all no-print shrink-0 border border-red-200"
@@ -1068,11 +1100,21 @@ const EventCard: React.FC<{
                        )}
                        
                        {entrustedTo ? (
-                          <div className={`flex items-center gap-1 px-2 py-0.5 rounded border ${entrustedTo === 'A' ? 'bg-red-50 border-red-100 text-red-600' : entrustedTo === 'B' ? 'bg-blue-50 border-blue-100 text-blue-600' : entrustedTo === 'C' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : entrustedTo === 'D' ? 'bg-amber-50 border-amber-100 text-amber-600' : 'bg-slate-50'}`}>
-                             <div className={`w-1 h-1 rounded-full ${entrustedTo === 'A' ? 'bg-red-500' : entrustedTo === 'B' ? 'bg-blue-500' : entrustedTo === 'C' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                             <span className="text-[8px] font-black uppercase tracking-tighter whitespace-nowrap">Gr. {entrustedTo}</span>
+                          <div className="flex items-center gap-2">
+                             {(isRedattore || canThisCompilatoreEdit) && (
+                               <button
+                                 onClick={(e) => { e.stopPropagation(); clearEntrust(event.id, reqIdx, unitIdx); }}
+                                 className="w-5 h-5 bg-slate-50 text-slate-700 rounded-lg flex items-center justify-center hover:bg-slate-200 transition-all no-print shrink-0 border border-slate-200"
+                                 title="Rimuovi affidamento"
+                               >
+                                 <span className="text-[12px] font-black leading-none">×</span>
+                               </button>
+                             )}
+                             <span className="text-[9px] font-black uppercase tracking-tight text-slate-700 whitespace-nowrap">
+                               Affidato a Gruppo {entrustedTo}
+                             </span>
                           </div>
-                       ) : (
+                       ) : () : (
                           <span className="text-[8px] italic text-slate-300 font-medium uppercase tracking-tighter truncate pr-1">Vacante...</span>
                        )}
                     </div>
