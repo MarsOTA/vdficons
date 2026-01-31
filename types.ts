@@ -23,11 +23,11 @@ export interface VehicleRequirements {
 }
 
 export interface PersonnelRequirement {
-  role: 'DIR' | 'CP' | 'VIG' | 'AUT' | 'ALTRO';
+  role: 'DIR' | 'CP' | 'VIG' | 'ALTRO';   // <- rimosso 'AUT'
   qty: number;
-  assignedIds: (string | null)[]; // Array di dimensione 'qty', mantiene la posizione dello slot
-  entrustedGroups?: (string | null)[]; // Array di dimensione 'qty'
-  entrustedByGroups?: (string | null)[]; // ✅ NUOVO: gruppo che ha fatto l'affidamento (A/B/C/D)
+  assignedIds: (string | null)[];
+  entrustedGroups?: (string | null)[];
+  entrustedByGroups?: (string | null)[]; // <- questa resta (serve per la X)
   specializations?: string[];
 }
 
