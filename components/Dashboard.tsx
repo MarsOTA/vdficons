@@ -10,6 +10,12 @@ import { jsPDF } from 'jspdf';
 import excelFileIcon from '../assets/icons/excel-file-type-svgrepo-com.svg';
 import pdfFileIcon from '../assets/icons/file-pdf-svgrepo-com.svg';
 
+const CalendarIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>
+  </svg>
+);
+
 const UserPlusIcon = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -63,8 +69,8 @@ const ChevronRight = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" he
 
 // --- Custom Calendar Component ---
 const CustomCalendar: React.FC<{ selectedDate: string, onSelect: (date: string) => void }> = ({ selectedDate, onSelect }) => {
-  const safeDate = selectedDate || new Date().toISOString().slice(0, 10);
-  const [viewDate, setViewDate] = useState(new Date(`${safeDate}T00:00:00`));
+  const initial = selectedDate ? new Date(selectedDate + 'T00:00:00') : new Date();
+  const [viewDate, setViewDate] = useState(initial);
 
   const currentYear = viewDate.getFullYear();
   const currentMonth = viewDate.getMonth();
@@ -143,10 +149,16 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({ count
         <br /><strong className="text-red-600 font-black">L’operazione non è reversibile.</strong>
       </p>
       <div className="grid grid-cols-2 gap-3">
-        <button onClick={onCancel} className="px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors">
+        <button
+          onClick={onCancel}
+          className="px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+        >
           Annulla
         </button>
-        <button onClick={onConfirm} className="px-6 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-200">
+        <button
+          onClick={onConfirm}
+          className="px-6 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-200"
+        >
           Elimina ora
         </button>
       </div>
@@ -173,6 +185,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
   const datePickerRef = useRef<HTMLDivElement>(null);
 
   const gridRef = useRef<HTMLDivElement>(null);
+
+  const currentCompilatoreGroup = role.startsWith('COMPILATORE') ? role.split('_')[1] : null;
+  const isCompilatore = !!currentCompilatoreGroup;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -227,23 +242,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     setExpandedIds(prev => prev.filter(id => !deleteRequest.includes(id)));
     if (assignmentModal && deleteRequest.includes(assignmentModal.eventId)) setAssignmentModal(null);
     setDeleteRequest(null);
-  };
-
-  // ✅ FIX: clearEntrust nello scope corretto (Dashboard) e NON dentro updateAssignment
-  const clearEntrust = (eventId: string, reqIndex: number, slotIndex: number) => {
-    setEvents(prev => prev.map(ev => {
-      if (ev.id !== eventId) return ev;
-      const newReqs = [...ev.requirements];
-      const targetReq = { ...newReqs[reqIndex] };
-
-      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
-      const newEntrusted = [...targetReq.entrustedGroups];
-      newEntrusted[slotIndex] = null;
-      targetReq.entrustedGroups = newEntrusted;
-
-      newReqs[reqIndex] = targetReq;
-      return { ...ev, requirements: newReqs };
-    }));
   };
 
   const handleDownloadPDF = async () => {
@@ -370,6 +368,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
                 parent.style.flex = '0 0 160px';
               }
             });
+
             clonedDoc.querySelectorAll('[data-pdf-percent="true"]').forEach((el: any) => {
               el.style.fontSize = '12px';
             });
@@ -497,7 +496,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
             const assignedId = req.assignedIds?.[i];
             const operator = assignedId ? MOCK_OPERATORS.find(o => o.id === assignedId) : null;
             const entrustedTo = req.entrustedGroups?.[i];
-            const name = operator ? operator.name : (entrustedTo ? `AFFIDATO ${entrustedTo}` : '');
+            const name = operator ? operator.name : (entrustTo ? `AFFIDATO ${entrustedTo}` : '');
             if (name) rows.push({ q: 'ALT', n: name });
           }
         });
@@ -678,7 +677,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     }
   };
 
+  // ✅ BLOCCO SICUREZZA: Redattore non modifica assegnazioni/affidamenti
+  const guardNoRedattore = () => {
+    if (role === 'REDATTORE') return false;
+    return true;
+  };
+
   const updateAssignment = (eventId: string, reqIndex: number, slotIndex: number, operatorId: string | null) => {
+    if (!guardNoRedattore()) return;
+
     setEvents(prev => prev.map(ev => {
       if (ev.id !== eventId) return ev;
 
@@ -689,10 +696,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       newAssigned[slotIndex] = operatorId;
       targetReq.assignedIds = newAssigned;
 
+      // Se assegno un operatore, annullo eventuale affidamento sullo slot
       if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
       const newEntries = [...targetReq.entrustedGroups];
-      if (operatorId) newEntries[slotIndex] = null; // se assegno, annullo eventuale affidamento
+      if (operatorId) newEntries[slotIndex] = null;
       targetReq.entrustedGroups = newEntries;
+
+      // Se assegno un operatore, annullo anche "chi ha affidato" (perché non è più affidato)
+      if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
+      const newEntrustedBy = [...targetReq.entrustedByGroups];
+      if (operatorId) newEntrustedBy[slotIndex] = null;
+      targetReq.entrustedByGroups = newEntrustedBy;
 
       newReqs[reqIndex] = targetReq;
 
@@ -700,16 +714,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       const filledUnits = newReqs.reduce((sum, r) => sum + r.assignedIds.filter(Boolean).length, 0);
 
       let newStatus = ev.status;
-      if (filledUnits === totalUnits && totalUnits > 0) newStatus = EventStatus.COMPLETATO;
-      else if (filledUnits > 0) newStatus = EventStatus.IN_COMPILAZIONE;
+      if (filledUnits === totalUnits && totalUnits > 0) {
+        newStatus = EventStatus.COMPLETATO;
+      } else if (filledUnits > 0) {
+        newStatus = EventStatus.IN_COMPILAZIONE;
+      }
 
       return { ...ev, requirements: newReqs, status: newStatus };
     }));
   };
 
+  // ✅ Clear entrust: solo chi ha fatto l’affidamento può annullarlo
+  const clearEntrust = (eventId: string, reqIndex: number, slotIndex: number) => {
+    if (!guardNoRedattore()) return;
+    if (!isCompilatore || !currentCompilatoreGroup) return;
+
+    setEvents(prev => prev.map(ev => {
+      if (ev.id !== eventId) return ev;
+
+      const newReqs = [...ev.requirements];
+      const targetReq = { ...newReqs[reqIndex] };
+
+      const entrustedTo = targetReq.entrustedGroups?.[slotIndex] ?? null;
+      if (!entrustedTo) return ev;
+
+      const entrustedBy = targetReq.entrustedByGroups?.[slotIndex] ?? null;
+
+      // ✅ SOLO chi ha affidato può rimuovere
+      if (entrustedBy !== currentCompilatoreGroup) return ev;
+
+      if (!targetReq.entrustedGroups) targetReq.entrustedGroups = Array(targetReq.qty).fill(null);
+      const newEntrusted = [...targetReq.entrustedGroups];
+      newEntrusted[slotIndex] = null;
+      targetReq.entrustedGroups = newEntrusted;
+
+      if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
+      const newBy = [...targetReq.entrustedByGroups];
+      newBy[slotIndex] = null;
+      targetReq.entrustedByGroups = newBy;
+
+      newReqs[reqIndex] = targetReq;
+      return { ...ev, requirements: newReqs };
+    }));
+  };
+
   const handleEntrust = (eventId: string, reqIndex: number, slotIndex: number, currentOwner: string) => {
+    if (!guardNoRedattore()) return;
+
     const event = events.find(e => e.id === eventId);
     if (!event) return;
+
     const dayCode = getMainDayCode(new Date(event.date + 'T00:00:00'));
     const priorityChain = getPriorityChain(dayCode);
     const currentIndex = priorityChain.indexOf(currentOwner);
@@ -717,6 +771,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
 
     setEvents(prev => prev.map(ev => {
       if (ev.id !== eventId) return ev;
+
       const newReqs = [...ev.requirements];
       const targetReq = { ...newReqs[reqIndex] };
 
@@ -725,6 +780,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       newEntrusted[slotIndex] = nextGroup;
       targetReq.entrustedGroups = newEntrusted;
 
+      // ✅ memorizzo CHI ha affidato (per mostrare la X solo a lui)
+      if (!targetReq.entrustedByGroups) targetReq.entrustedByGroups = Array(targetReq.qty).fill(null);
+      const newBy = [...targetReq.entrustedByGroups];
+      newBy[slotIndex] = currentOwner;
+      targetReq.entrustedByGroups = newBy;
+
+      // quando affido, svuoto eventuale assegnazione
       const newAssigned = [...targetReq.assignedIds];
       newAssigned[slotIndex] = null;
       targetReq.assignedIds = newAssigned;
@@ -732,6 +794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
       newReqs[reqIndex] = targetReq;
       return { ...ev, requirements: newReqs };
     }));
+
     setAssignmentModal(null);
   };
 
@@ -947,6 +1010,7 @@ const EventCard: React.FC<{
   onClearEntrust: (idx: number, slotIdx: number) => void;
   onDeleteRequest: () => void;
 }> = ({ event, role, isExpanded, onToggle, onOpenAssignment, onRemoveAssignment, onClearEntrust, onDeleteRequest }) => {
+
   const currentCompilatoreGroup = role.startsWith('COMPILATORE') ? role.split('_')[1] : null;
   const isCompilatore = !!currentCompilatoreGroup;
   const isRedattore = role === 'REDATTORE';
@@ -989,9 +1053,15 @@ const EventCard: React.FC<{
           return Array.from({ length: req.qty }).map((_, unitIdx) => {
             const assignedId = req.assignedIds[unitIdx];
             const operator = assignedId ? MOCK_OPERATORS.find(o => o.id === assignedId) : null;
-            const entrustedTo = req.entrustedGroups?.[unitIdx];
+
+            const entrustedTo = req.entrustedGroups?.[unitIdx] ?? null;
+            const entrustedBy = req.entrustedByGroups?.[unitIdx] ?? null;
+
             const slotOwner = entrustedTo || (priorityChain ? priorityChain[0] : 'A');
             const canThisCompilatoreEdit = isCompilatore && currentCompilatoreGroup === slotOwner;
+
+            // ✅ Solo chi HA AFFIDATO vede la X per annullare
+            const canUndoEntrust = isCompilatore && !!entrustedTo && entrustedBy === currentCompilatoreGroup;
 
             let roleBg = "bg-slate-100";
             if (req.role === 'DIR') roleBg = "bg-[#EA9E8D]";
@@ -1010,35 +1080,42 @@ const EventCard: React.FC<{
                 <div className="flex-1 flex items-center px-2 bg-white min-w-0 gap-2">
                   {operator ? (
                     <div className="flex items-center w-full min-w-0 gap-2">
-                      {(isRedattore || (isCompilatore && canThisCompilatoreEdit)) && (
+
+                      {/* ✅ X rimozione nominativo: solo compilatore proprietario (mai redattore) */}
+                      {canThisCompilatoreEdit && (
                         <button
                           onClick={(e) => { e.stopPropagation(); onRemoveAssignment(reqIdx, unitIdx); }}
                           className="w-5 h-5 bg-red-50 text-[#720000] rounded-lg flex items-center justify-center hover:bg-[#A80505] hover:text-white transition-all no-print shrink-0 border border-red-200"
+                          title="Rimuovi assegnazione"
                         >
                           <span className="text-[12px] font-black leading-none">×</span>
                         </button>
                       )}
+
                       <span className="text-[10px] font-black text-slate-950 uppercase pr-1 truncate pdf-no-truncate">{operator.name}</span>
                     </div>
                   ) : (
                     <div className="flex items-center w-full gap-2">
+
+                      {/* + assegnazione: solo compilatore proprietario */}
                       {canThisCompilatoreEdit && (
                         <button
                           onClick={(e) => { e.stopPropagation(); onOpenAssignment(req.role, reqIdx, unitIdx); }}
                           className="w-5 h-5 bg-red-50 text-[#720000] hover:scale-110 transition-transform shrink-0 no-print flex items-center justify-center rounded-lg shadow-sm hover:bg-[#A80505] hover:text-white border border-red-200"
+                          title="Assegna operatore"
                         >
                           <UserPlusIcon className="w-3.5 h-3.5" />
                         </button>
                       )}
 
-                      {/* ✅ FIX: ternario corretto (Affidato vs Vacante) */}
                       {entrustedTo ? (
                         <div className="flex items-center gap-2">
-                          {(isRedattore || canThisCompilatoreEdit) && (
+                          {/* ✅ X affidamento: solo compilatore che ha effettuato il passaggio */}
+                          {canUndoEntrust && (
                             <button
                               onClick={(e) => { e.stopPropagation(); onClearEntrust(reqIdx, unitIdx); }}
                               className="w-5 h-5 bg-slate-50 text-slate-700 rounded-lg flex items-center justify-center hover:bg-slate-200 transition-all no-print shrink-0 border border-slate-200"
-                              title="Rimuovi affidamento"
+                              title="Rimuovi affidamento (solo chi l’ha fatto)"
                             >
                               <span className="text-[12px] font-black leading-none">×</span>
                             </button>
@@ -1048,7 +1125,9 @@ const EventCard: React.FC<{
                           </span>
                         </div>
                       ) : (
-                        <span className="text-[8px] italic text-slate-300 font-medium uppercase tracking-tighter truncate pr-1">Vacante...</span>
+                        <span className="text-[8px] italic text-slate-300 font-medium uppercase tracking-tighter truncate pr-1">
+                          Vacante...
+                        </span>
                       )}
                     </div>
                   )}
@@ -1072,6 +1151,7 @@ const EventCard: React.FC<{
             {event.vehicles.ABP > 0 && <div className="px-2.5 py-1 bg-slate-800 rounded-lg text-[9px] font-black text-white border border-white/20 uppercase tracking-tighter shadow-sm">ABP {event.vehicles.ABP}</div>}
           </div>
 
+          {/* ✅ Redattore: solo cancella servizio (non tocchiamo altro) */}
           {isRedattore && (
             <button
               type="button"
@@ -1098,7 +1178,7 @@ const AssignmentPopup: React.FC<{
   eventId: string; roleName: string; userRole: UserRole; onClose: () => void;
   onAssign: (id: string) => void; onEntrust: (currentOwner: string) => void;
   assignedIds: (string | null)[]; slotIndex: number; events: OperationalEvent[];
-}> = ({ eventId, roleName, userRole, onClose, onAssign, onEntrust, slotIndex, events }) => {
+}> = ({ eventId, roleName, userRole, onClose, onAssign, onEntrust, assignedIds, slotIndex, events }) => {
   const [search, setSearch] = useState('');
   const [specFilter, setSpecFilter] = useState('');
   const [sedePopupFilter, setSedePopupFilter] = useState('TUTTE');
@@ -1140,7 +1220,6 @@ const AssignmentPopup: React.FC<{
 
   const pool = useMemo(() => {
     const validSubgroups = new Set([...standard, ...extra]);
-
     let result = MOCK_OPERATORS.filter(op => op.qualification === roleName && op.available);
 
     result = result.filter(op =>
@@ -1167,10 +1246,11 @@ const AssignmentPopup: React.FC<{
 
       const pA = getPriority(a.subgroup);
       const pB = getPriority(b.subgroup);
+
       if (pA !== pB) return pA - pB;
 
-      const valA = a[sortConfig.key];
-      const valB = b[sortConfig.key];
+      const valA = (a as any)[sortConfig.key];
+      const valB = (b as any)[sortConfig.key];
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -1187,15 +1267,23 @@ const AssignmentPopup: React.FC<{
           <div className="flex-1">
             <h3 className="text-xl font-black text-[#720000] uppercase tracking-tight leading-none">SELEZIONE {roleName}</h3>
             <div className="flex items-center gap-2 mt-2">
-              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${userGroup === 'A' ? 'bg-red-50 text-red-600 border border-red-100' : userGroup === 'B' ? 'bg-blue-50 text-blue-700 border border-blue-100' : userGroup === 'C' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : userGroup === 'D' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-50'}`}>Gruppo {userGroup}</span>
+              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${userGroup === 'A' ? 'bg-red-50 text-red-600 border border-red-100' : userGroup === 'B' ? 'bg-blue-50 text-blue-700 border border-blue-100' : userGroup === 'C' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : userGroup === 'D' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-50'}`}>
+                Gruppo {userGroup}
+              </span>
               <span className="text-slate-300 mx-1">•</span>
               <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest">Compilatore Autorizzato</p>
             </div>
           </div>
 
           {userGroup === groupOwner && (
-            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEntrust(groupOwner); }} className="flex items-center gap-2 px-5 py-3 bg-[#720000] text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all mr-4 shadow-xl shadow-red-200 hover:bg-slate-900 active:scale-95 border border-white/10"><ShareIcon className="w-3.5 h-3.5" /> Passa a Gruppo {nextGroup}</button>
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEntrust(groupOwner); }}
+              className="flex items-center gap-2 px-5 py-3 bg-[#720000] text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all mr-4 shadow-xl shadow-red-200 hover:bg-slate-900 active:scale-95 border border-white/10"
+            >
+              <ShareIcon className="w-3.5 h-3.5" /> Passa a Gruppo {nextGroup}
+            </button>
           )}
+
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500 text-2xl font-light leading-none">×</button>
         </div>
 
@@ -1253,7 +1341,13 @@ const AssignmentPopup: React.FC<{
                 </div>
 
                 <div className="col-span-2 flex items-center justify-start pl-1">
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-black border shadow-sm ${op.group === 'A' ? 'bg-red-50 text-red-700 border-red-100' : op.group === 'B' ? 'bg-blue-50 text-blue-700 border-blue-100' : op.group === 'C' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : op.group === 'D' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-slate-800 text-white border-slate-900'}`}>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-black border shadow-sm ${
+                    op.group === 'A' ? 'bg-red-50 text-red-700 border-red-100' :
+                    op.group === 'B' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                    op.group === 'C' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                    op.group === 'D' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                    'bg-slate-800 text-white border-slate-900'
+                  }`}>
                     {op.subgroup}
                   </span>
                 </div>
@@ -1268,7 +1362,6 @@ const AssignmentPopup: React.FC<{
 
                 <div className="col-span-2 flex flex-wrap gap-1">
                   {op.specializations?.slice(0, 2).map(s => (
-                    // ✅ FIX: rimosso \" che rompe il build
                     <span key={s} className="bg-slate-100 text-slate-500 text-[7px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter whitespace-nowrap border border-slate-200">{s}</span>
                   ))}
                   {op.specializations && op.specializations.length > 2 && (
