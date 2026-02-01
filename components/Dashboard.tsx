@@ -304,7 +304,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
     <h2 style="font-size: 56px; font-weight: 900; margin: 0; line-height: 1; color: black;">
       ${formatDate(selectedDate)}
     </h2>
-    <p style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 6px 0 0 0; color: #555;">
+    <p style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 16px 0 0 0; color: #555;">
       Documento generato il ${new Date().toLocaleString()}
     </p>
   </div>
