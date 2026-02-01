@@ -294,16 +294,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
         align-items: flex-end !important;
         background: white !important;
       `;
-      headerDiv.innerHTML = `
-        <div style="flex: 1">
-          <h1 style="font-size: 40px; font-weight: 900; text-transform: uppercase; margin: 0; color: black; letter-spacing: -1px;">VVF MILANO • REPORT OPERATIVO</h1>
-          <p style="font-size: 18px; font-weight: 700; text-transform: uppercase; margin: 10px 0 0 0; color: #333;">Comando Provinciale Vigili del Fuoco</p>
-        </div>
-        <div style="text-align: right">
-          <h2 style="font-size: 56px; font-weight: 900; margin: 0; line-height: 0.8; color: black;">${formatDate(selectedDate)}</h2>
-          <p style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin-top: 12px; color: #555;">Documento generato il ${new Date().toLocaleString()}</p>
-        </div>
-      `;
+     headerDiv.innerHTML = `
+  <div style="flex: 1">
+    <h1 style="font-size: 40px; font-weight: 900; text-transform: uppercase; margin: 0; color: black; letter-spacing: -1px;">VVF MILANO • REPORT OPERATIVO</h1>
+    <p style="font-size: 18px; font-weight: 700; text-transform: uppercase; margin: 10px 0 0 0; color: #333;">Comando Provinciale Vigili del Fuoco</p>
+  </div>
+
+  <div style="text-align: right; display:flex; flex-direction:column; align-items:flex-end;">
+    <h2 style="font-size: 56px; font-weight: 900; margin: 0; line-height: 1; color: black;">
+      ${formatDate(selectedDate)}
+    </h2>
+    <p style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 6px 0 0 0; color: #555;">
+      Documento generato il ${new Date().toLocaleString()}
+    </p>
+  </div>
+`;
       container.prepend(headerDiv);
 
       const pdf = new jsPDF('l', 'mm', 'a3');
