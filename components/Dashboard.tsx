@@ -364,8 +364,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
               const parent = el.parentElement as HTMLElement | null;
               if (parent) {
                 parent.style.overflow = 'visible';
-                parent.style.width = '120px';
-                parent.style.flex = '0 0 120px';
+                parent.style.width = '100px';
+                parent.style.flex = '0 0 100px';
               }
             });
 
