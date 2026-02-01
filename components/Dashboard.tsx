@@ -1074,7 +1074,7 @@ const EventCard: React.FC<{
 
             return (
               <div key={`${req.role}-${reqIdx}-${unitIdx}`} data-requirement-row="true" className="flex h-10 items-stretch border-b border-slate-50 last:border-b-0">
-                <div className={`w-28 px-1 ${roleBg} flex items-center justify-center shrink-0 border-r border-slate-200/30 overflow-hidden`}>
+                <div className={`w-20 px-1 ${roleBg} flex items-center justify-center shrink-0 border-r border-slate-200/30 overflow-hidden`}>
                   <span data-pdf-badge="true" className="text-[9px] font-black text-slate-800 uppercase whitespace-nowrap text-center leading-tight tracking-tighter overflow-hidden">
                     {operator ? operator.rank : req.role}
                   </span>
