@@ -594,7 +594,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
 
           ws.mergeCells(r0, c0, r0, c1);
           const titleCell = ws.getCell(r0, c0);
-          titleCell.value = `${ev.location} — ${ev.code}`;
+          titleCell.value = `${ev.code}`;
           applyCellStyle(titleCell, 18, true, 'left');
 
           ws.mergeCells(r0 + 1, c0, r0 + 1, c1);
@@ -625,10 +625,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ events, setEvents, role, s
             nCell.border = { ...(nCell.border || {}), left: { style: 'thin' } };
           }
 
-          const dayCode = getMainDayCode(new Date(ev.date + 'T00:00:00'));
+          // Automezzi (mostra solo se presenti; niente dayCode "B1")
           ws.mergeCells(r0 + 8, c0, r0 + 8, c1);
           const apsCell = ws.getCell(r0 + 8, c0);
-          apsCell.value = `APS- ${dayCode}`;
+          const vehicleParts: string[] = [];
+          if (ev.vehicles?.APS > 0) vehicleParts.push(`APS ${ev.vehicles.APS}`);
+          if (ev.vehicles?.AS > 0) vehicleParts.push(`AS ${ev.vehicles.AS}`);
+          if (ev.vehicles?.ABP > 0) vehicleParts.push(`ABP ${ev.vehicles.ABP}`);
+          apsCell.value = vehicleParts.join(' • ');
           apsCell.font = { name: 'Calibri', size: 13, bold: false };
           apsCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
